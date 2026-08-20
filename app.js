@@ -13,35 +13,48 @@ L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map);
 
 const gpsLayer = L.layerGroup().addTo(map);
 
-// 이 줌 미만이면 지역구 색칠 지도, 이상이면 개별 마커/클러스터를 보여준다
+// 줌 12 미만: 구 단위 색칠 지도 / 12~15: 동 단위 색칠 지도 / 15 이상: 개별 마커·클러스터
 const CHORO_MAX_ZOOM = 12;
+const DONG_MAX_ZOOM = 15;
 let guChoroLayer = null;
+let dongChoroLayer = null;
 
-function guColorScale(count, breaks) {
+function choroColorScale(count, breaks) {
     if (count <= 0) return '#dfe6e9';
     if (count >= breaks[1]) return '#e74c3c';
     if (count >= breaks[0]) return '#f1c40f';
     return '#3498db';
 }
 
-function computeGuStats(aggregated) {
+function computeStatsBy(aggregated, keyFn) {
     const stats = {};
     aggregated.forEach(item => {
-        const gu = item.address ? item.address.split(' ')[0] : '기타';
-        stats[gu] = (stats[gu] || 0) + item.permit_count;
+        const key = keyFn(item);
+        stats[key] = (stats[key] || 0) + item.permit_count;
     });
     return stats;
 }
 
-async function loadGuBoundaries() {
-    const res = await fetch('./data/seoul_gu.geojson');
-    const geojson = await res.json();
+function computeGuStats(aggregated) {
+    return computeStatsBy(aggregated, item => item.address ? item.address.split(' ')[0] : '기타');
+}
 
-    guChoroLayer = L.geoJSON(geojson, {
+function computeDongStats(aggregated) {
+    return computeStatsBy(aggregated, item => {
+        if (!item.address) return '기타';
+        const parts = item.address.split(' ');
+        return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : parts[0];
+    });
+}
+
+function createChoroLayer(geojson, getKey, getLabel) {
+    return L.geoJSON(geojson, {
         style: () => ({ color: '#fff', weight: 2, fillColor: '#dfe6e9', fillOpacity: 0.35 }),
         onEachFeature: (feature, layer) => {
+            layer._statKey = getKey(feature);
+            layer._labelName = getLabel(feature);
             layer.bindTooltip(
-                `<span class="gu-name">${feature.properties.name}</span><span class="gu-count">-</span>`,
+                `<span class="gu-name">${layer._labelName}</span><span class="gu-count">-</span>`,
                 { permanent: true, direction: 'center', className: 'gu-tooltip', interactive: false }
             );
             layer.on('click', () => map.flyToBounds(layer.getBounds(), { padding: [20, 20] }));
@@ -51,33 +64,57 @@ async function loadGuBoundaries() {
     });
 }
 
-function updateGuChoropleth() {
-    if (!guChoroLayer) return;
-    const stats = computeGuStats(aggregatedCurrentData);
+async function loadGuBoundaries() {
+    const res = await fetch('./data/seoul_gu.geojson');
+    const geojson = await res.json();
+    guChoroLayer = createChoroLayer(geojson, f => f.properties.name, f => f.properties.name);
+}
+
+async function loadDongBoundaries() {
+    const res = await fetch('./data/seoul_dong.geojson');
+    const geojson = await res.json();
+    dongChoroLayer = createChoroLayer(
+        geojson,
+        f => `${f.properties.gu} ${f.properties.EMD_KOR_NM}`,
+        f => f.properties.EMD_KOR_NM
+    );
+}
+
+function updateChoropleth(layer, stats) {
+    if (!layer) return;
     const values = Object.values(stats).filter(v => v > 0).sort((a, b) => a - b);
     const breaks = values.length
         ? [values[Math.floor(values.length / 3)], values[Math.floor(values.length * 2 / 3)] || values[values.length - 1]]
         : [1, 1];
 
-    guChoroLayer.eachLayer(layer => {
-        const guName = layer.feature.properties.name;
-        const count = stats[guName] || 0;
-        layer.setStyle({ fillColor: guColorScale(count, breaks), fillOpacity: count > 0 ? 0.65 : 0.35 });
-        layer.setTooltipContent(
-            `<span class="gu-name">${guName}</span><span class="gu-count">${count}건</span>`
+    layer.eachLayer(featureLayer => {
+        const count = stats[featureLayer._statKey] || 0;
+        featureLayer.setStyle({ fillColor: choroColorScale(count, breaks), fillOpacity: count > 0 ? 0.65 : 0.35 });
+        featureLayer.setTooltipContent(
+            `<span class="gu-name">${featureLayer._labelName}</span><span class="gu-count">${count}건</span>`
         );
     });
 }
 
+function updateChoropleths() {
+    updateChoropleth(guChoroLayer, computeGuStats(aggregatedCurrentData));
+    updateChoropleth(dongChoroLayer, computeDongStats(aggregatedCurrentData));
+}
+
+function toggleMapLayer(layer, shouldShow) {
+    if (!layer) return;
+    const isShown = map.hasLayer(layer);
+    if (shouldShow && !isShown) map.addLayer(layer);
+    if (!shouldShow && isShown) map.removeLayer(layer);
+}
+
 function updateZoomLayers() {
-    const showChoropleth = map.getZoom() < CHORO_MAX_ZOOM;
-    if (showChoropleth) {
-        if (guChoroLayer && !map.hasLayer(guChoroLayer)) guChoroLayer.addTo(map);
-        Object.values(guClusterLayers).forEach(layer => map.hasLayer(layer) && map.removeLayer(layer));
-    } else {
-        if (guChoroLayer && map.hasLayer(guChoroLayer)) map.removeLayer(guChoroLayer);
-        Object.values(guClusterLayers).forEach(layer => !map.hasLayer(layer) && map.addLayer(layer));
-    }
+    const zoom = map.getZoom();
+    toggleMapLayer(guChoroLayer, zoom < CHORO_MAX_ZOOM);
+    toggleMapLayer(dongChoroLayer, zoom >= CHORO_MAX_ZOOM && zoom < DONG_MAX_ZOOM);
+
+    const showMarkers = zoom >= DONG_MAX_ZOOM;
+    Object.values(guClusterLayers).forEach(layer => toggleMapLayer(layer, showMarkers));
 }
 
 map.on('zoomend', updateZoomLayers);
@@ -363,7 +400,7 @@ function setPeriod(period, btn) {
 
     aggregatedCurrentData = aggregateData(filteredData);
     renderMarkers(aggregatedCurrentData);
-    updateGuChoropleth();
+    updateChoropleths();
     updateZoomLayers();
 
     if(document.getElementById('rankingPanel').style.display === 'flex') {
@@ -591,7 +628,7 @@ map.on('locationfound', e => {
     L.circleMarker(e.latlng, { radius: 8, color: '#fff', fillColor: '#2ecc71', fillOpacity: 1 }).addTo(gpsLayer);
 });
 
-Promise.all([loadGuBoundaries(), loadData()]).then(() => {
-    updateGuChoropleth();
+Promise.all([loadGuBoundaries(), loadDongBoundaries(), loadData()]).then(() => {
+    updateChoropleths();
     updateZoomLayers();
 });

@@ -35,7 +35,7 @@ jobs:
           if [ -f requirements.txt ]; then 
             pip install -r requirements.txt
           else 
-            pip install aiohttp requests
+            pip install aiohttp
           fi
 
       - name: Run Geocoding Script
@@ -58,5 +58,5 @@ jobs:
             exit 0
           fi
         
-          git commit --amend -m "Auto Update: permit Data JSON [$(date)]" --author="github-actions[bot] <github-actions[bot]@users.noreply.github.com>" || git commit -m "Auto Update: permit Data JSON [$(date)]"
-          git push -f origin HEAD:main
+          git commit -m "Auto Update: permit Data JSON [$(date)]"
+          git push origin HEAD:main

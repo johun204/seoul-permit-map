@@ -57,7 +57,7 @@ function createChoroLayer(geojson, getKey, getLabel, extraTooltipClass) {
             layer._statKey = getKey(feature);
             layer._labelName = getLabel(feature);
             layer.bindTooltip(
-                `<span class="gu-name">${layer._labelName}</span><span class="gu-count">-</span>`,
+                `<span class="gu-name">${layer._labelName}</span><span class="gu-count">-<span class="gu-unit">건</span></span>`,
                 { permanent: true, direction: 'center', className: tooltipClass, interactive: false }
             );
             layer.on('click', () => map.flyToBounds(layer.getBounds(), { padding: [20, 20] }));
@@ -106,7 +106,7 @@ function updateChoropleth(layer, stats, hideEmpty) {
 
         featureLayer.setStyle({ fillColor: choroColorScale(count, breaks), fillOpacity: count > 0 ? 0.65 : 0.35 });
         featureLayer.setTooltipContent(
-            `<span class="gu-name">${featureLayer._labelName}</span><span class="gu-count">${count}건</span>`
+            `<span class="gu-name">${featureLayer._labelName}</span><span class="gu-count">${count}<span class="gu-unit">건</span></span>`
         );
     });
 }

@@ -166,6 +166,9 @@ body { margin: 0; padding: 0; font-family: 'Noto Sans KR', sans-serif; -webkit-t
 .gu-tooltip::before { display: none; }
 .gu-tooltip .gu-name { display: block; font-size: 12px; font-weight: 700; color: #2c3e50; }
 .gu-tooltip .gu-count { display: block; font-size: 15px; font-weight: 900; color: #2c3e50; }
+/* 동 폴리곤은 구보다 훨씬 작아서 이름 폰트를 줄이고, 축소된 상태에서는 이름 자체를 숨긴다 */
+.dong-tooltip .gu-name { font-size: 9px; }
+.map-hide-dong-name .dong-tooltip .gu-name { display: none; }
 .custom-cluster-icon {
     background: rgba(46, 204, 113, 0.9);
     color: white; border: 2px solid white; border-radius: 50%;

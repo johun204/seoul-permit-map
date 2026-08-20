@@ -16,6 +16,8 @@ const gpsLayer = L.layerGroup().addTo(map);
 // 줌 12 미만: 구 단위 색칠 지도 / 12~15: 동 단위 색칠 지도 / 15 이상: 개별 마커·클러스터
 const CHORO_MAX_ZOOM = 12;
 const DONG_MAX_ZOOM = 15;
+// 동 단위 색칠 지도 안에서도, 이 줌 미만은 폴리곤이 작아 숫자만 표시하고 이 줌 이상부터 동 이름도 표시한다
+const DONG_NAME_MIN_ZOOM = 14;
 let guChoroLayer = null;
 let dongChoroLayer = null;
 
@@ -47,7 +49,8 @@ function computeDongStats(aggregated) {
     });
 }
 
-function createChoroLayer(geojson, getKey, getLabel) {
+function createChoroLayer(geojson, getKey, getLabel, extraTooltipClass) {
+    const tooltipClass = extraTooltipClass ? `gu-tooltip ${extraTooltipClass}` : 'gu-tooltip';
     const group = L.geoJSON(geojson, {
         style: () => ({ color: '#fff', weight: 2, fillColor: '#dfe6e9', fillOpacity: 0.35 }),
         onEachFeature: (feature, layer) => {
@@ -55,7 +58,7 @@ function createChoroLayer(geojson, getKey, getLabel) {
             layer._labelName = getLabel(feature);
             layer.bindTooltip(
                 `<span class="gu-name">${layer._labelName}</span><span class="gu-count">-</span>`,
-                { permanent: true, direction: 'center', className: 'gu-tooltip', interactive: false }
+                { permanent: true, direction: 'center', className: tooltipClass, interactive: false }
             );
             layer.on('click', () => map.flyToBounds(layer.getBounds(), { padding: [20, 20] }));
             layer.on('mouseover', () => layer.setStyle({ weight: 3 }));
@@ -80,7 +83,8 @@ async function loadDongBoundaries() {
     dongChoroLayer = createChoroLayer(
         geojson,
         f => `${f.properties.gu} ${f.properties.EMD_KOR_NM}`,
-        f => f.properties.EMD_KOR_NM
+        f => f.properties.EMD_KOR_NM,
+        'dong-tooltip'
     );
 }
 
@@ -124,6 +128,7 @@ function updateZoomLayers() {
     const zoom = map.getZoom();
     toggleMapLayer(guChoroLayer, zoom < CHORO_MAX_ZOOM);
     toggleMapLayer(dongChoroLayer, zoom >= CHORO_MAX_ZOOM && zoom < DONG_MAX_ZOOM);
+    map.getContainer().classList.toggle('map-hide-dong-name', zoom < DONG_NAME_MIN_ZOOM);
 
     const showMarkers = zoom >= DONG_MAX_ZOOM;
     Object.values(guClusterLayers).forEach(layer => toggleMapLayer(layer, showMarkers));

@@ -48,7 +48,7 @@ function computeDongStats(aggregated) {
 }
 
 function createChoroLayer(geojson, getKey, getLabel) {
-    return L.geoJSON(geojson, {
+    const group = L.geoJSON(geojson, {
         style: () => ({ color: '#fff', weight: 2, fillColor: '#dfe6e9', fillOpacity: 0.35 }),
         onEachFeature: (feature, layer) => {
             layer._statKey = getKey(feature);
@@ -62,6 +62,10 @@ function createChoroLayer(geojson, getKey, getLabel) {
             layer.on('mouseout', () => layer.setStyle({ weight: 2 }));
         }
     });
+    // hideEmpty로 개별 폴리곤을 껐다 켰다 하면 eachLayer로는 더 이상 안 잡히므로 따로 보관해둔다
+    group._allLayers = [];
+    group.eachLayer(featureLayer => group._allLayers.push(featureLayer));
+    return group;
 }
 
 async function loadGuBoundaries() {
@@ -80,15 +84,22 @@ async function loadDongBoundaries() {
     );
 }
 
-function updateChoropleth(layer, stats) {
+function updateChoropleth(layer, stats, hideEmpty) {
     if (!layer) return;
     const values = Object.values(stats).filter(v => v > 0).sort((a, b) => a - b);
     const breaks = values.length
         ? [values[Math.floor(values.length / 3)], values[Math.floor(values.length * 2 / 3)] || values[values.length - 1]]
         : [1, 1];
 
-    layer.eachLayer(featureLayer => {
+    layer._allLayers.forEach(featureLayer => {
         const count = stats[featureLayer._statKey] || 0;
+
+        if (hideEmpty && count <= 0) {
+            if (layer.hasLayer(featureLayer)) layer.removeLayer(featureLayer);
+            return;
+        }
+        if (!layer.hasLayer(featureLayer)) layer.addLayer(featureLayer);
+
         featureLayer.setStyle({ fillColor: choroColorScale(count, breaks), fillOpacity: count > 0 ? 0.65 : 0.35 });
         featureLayer.setTooltipContent(
             `<span class="gu-name">${featureLayer._labelName}</span><span class="gu-count">${count}건</span>`
@@ -97,8 +108,9 @@ function updateChoropleth(layer, stats) {
 }
 
 function updateChoropleths() {
-    updateChoropleth(guChoroLayer, computeGuStats(aggregatedCurrentData));
-    updateChoropleth(dongChoroLayer, computeDongStats(aggregatedCurrentData));
+    updateChoropleth(guChoroLayer, computeGuStats(aggregatedCurrentData), false);
+    // 동은 개수가 많아 0건까지 표시하면 라벨이 겹치므로 데이터 있는 동만 보여준다
+    updateChoropleth(dongChoroLayer, computeDongStats(aggregatedCurrentData), true);
 }
 
 function toggleMapLayer(layer, shouldShow) {
